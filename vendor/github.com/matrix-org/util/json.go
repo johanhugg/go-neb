@@ -58,6 +58,21 @@ type JSONRequestHandler interface {
 	OnIncomingRequest(req *http.Request) JSONResponse
 }
 
+// jsonRequestHandlerWrapper is a wrapper to allow in-line functions to conform to util.JSONRequestHandler
+type jsonRequestHandlerWrapper struct {
+	function func(req *http.Request) JSONResponse
+}
+
+// OnIncomingRequest implements util.JSONRequestHandler
+func (r *jsonRequestHandlerWrapper) OnIncomingRequest(req *http.Request) JSONResponse {
+	return r.function(req)
+}
+
+// NewJSONRequestHandler converts the given OnIncomingRequest function into a JSONRequestHandler
+func NewJSONRequestHandler(f func(req *http.Request) JSONResponse) JSONRequestHandler {
+	return &jsonRequestHandlerWrapper{f}
+}
+
 // Protect panicking HTTP requests from taking down the entire process, and log them using
 // the correct logger, returning a 500 with a JSON response rather than abruptly closing the
 // connection. The http.Request MUST have a ctxValueLogger.
@@ -65,7 +80,7 @@ func Protect(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		defer func() {
 			if r := recover(); r != nil {
-				logger := req.Context().Value(ctxValueLogger).(*log.Entry)
+				logger := GetLogger(req.Context())
 				logger.WithFields(log.Fields{
 					"panic": r,
 				}).Errorf(
@@ -78,24 +93,38 @@ func Protect(handler http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// RequestWithLogging sets up standard logging for http.Requests.
+// http.Requests will have a logger (with a request ID/method/path logged) attached to the Context.
+// This can be accessed via GetLogger(Context).
+func RequestWithLogging(req *http.Request) *http.Request {
+	reqID := RandomString(12)
+	// Set a Logger and request ID on the context
+	ctx := ContextWithLogger(req.Context(), log.WithFields(log.Fields{
+		"req.method": req.Method,
+		"req.path":   req.URL.Path,
+		"req.id":     reqID,
+	}))
+	ctx = context.WithValue(ctx, ctxValueRequestID, reqID)
+	req = req.WithContext(ctx)
+
+	logger := GetLogger(req.Context())
+	logger.Print("Incoming request")
+
+	return req
+}
+
 // MakeJSONAPI creates an HTTP handler which always responds to incoming requests with JSON responses.
 // Incoming http.Requests will have a logger (with a request ID/method/path logged) attached to the Context.
 // This can be accessed via GetLogger(Context).
 func MakeJSONAPI(handler JSONRequestHandler) http.HandlerFunc {
 	return Protect(func(w http.ResponseWriter, req *http.Request) {
-		reqID := RandomString(12)
-		// Set a Logger and request ID on the context
-		ctx := context.WithValue(req.Context(), ctxValueLogger, log.WithFields(log.Fields{
-			"req.method": req.Method,
-			"req.path":   req.URL.Path,
-			"req.id":     reqID,
-		}))
-		ctx = context.WithValue(ctx, ctxValueRequestID, reqID)
-		req = req.WithContext(ctx)
+		req = RequestWithLogging(req)
 
-		logger := req.Context().Value(ctxValueLogger).(*log.Entry)
-		logger.Print("Incoming request")
-
+		if req.Method == "OPTIONS" {
+			SetCORSHeaders(w)
+			w.WriteHeader(200)
+			return
+		}
 		res := handler.OnIncomingRequest(req)
 
 		// Set common headers returned regardless of the outcome of the request
@@ -107,7 +136,7 @@ func MakeJSONAPI(handler JSONRequestHandler) http.HandlerFunc {
 }
 
 func respond(w http.ResponseWriter, req *http.Request, res JSONResponse) {
-	logger := req.Context().Value(ctxValueLogger).(*log.Entry)
+	logger := GetLogger(req.Context())
 
 	// Set custom headers
 	if res.Headers != nil {
@@ -147,7 +176,7 @@ func WithCORSOptions(handler http.HandlerFunc) http.HandlerFunc {
 func SetCORSHeaders(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept")
+	w.Header().Set("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization")
 }
 
 const alphanumerics = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"

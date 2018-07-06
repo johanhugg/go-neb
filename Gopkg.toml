@@ -1,0 +1,45 @@
+# Gopkg.toml example
+#
+# Refer to https://github.com/golang/dep/blob/master/docs/Gopkg.toml.md
+# for detailed Gopkg.toml documentation.
+#
+# required = ["github.com/user/thing/cmd/thing"]
+# ignored = ["github.com/user/project/pkgX", "bitbucket.org/user/project/pkgA/pkgY"]
+#
+# [[constraint]]
+#   name = "github.com/user/project"
+#   version = "1.0.0"
+#
+# [[constraint]]
+#   name = "github.com/user/project2"
+#   branch = "dev"
+#   source = "github.com/myfork/project2"
+#
+# [[override]]
+#   name = "github.com/x/y"
+#   version = "2.4.0"
+#
+# [prune]
+#   non-go = false
+#   go-tests = true
+#   unused-packages = true
+
+
+[[constraint]]
+  name = "github.com/matrix-org/dugong"
+  revision = "c1a93e636df633e6d4c11b738fd25329979b99c2"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/matrix-org/util"
+
+[[constraint]]
+  branch = "v2"
+  name = "gopkg.in/yaml.v2"
+[[constraint]]
+  name = "github.com/matrix-org/gomatrix"
+  revision = "eb6a57bae949723df0d4947a03d4136a1f64b784"
+
+[prune]
+  go-tests = true
+  unused-packages = true
